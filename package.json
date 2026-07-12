@@ -15,6 +15,7 @@
     "docs:preview": "vitepress preview lessons --port 4174"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^2.0.85",
     "@ai-sdk/openai": "^3.0.70",
     "ai": "^6.0.202",
     "class-variance-authority": "^0.7.1",

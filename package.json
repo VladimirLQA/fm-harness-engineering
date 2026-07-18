@@ -16,7 +16,7 @@
   },
   "dependencies": {
     "@ai-sdk/openai": "^3.0.70",
-    "@dbos-inc/dbos-sdk": "^4.19.8",
+    "@dbos-inc/dbos-sdk": "^4.23.6",
     "ai": "^6.0.202",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

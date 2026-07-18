@@ -4,7 +4,7 @@ import { pgTable, bigserial, jsonb } from 'drizzle-orm/pg-core';
 import type { AgentEvent } from '@shared/events';
 
 const connectionString = process.env.DATABASE_URL;
-    console.log(process.env.DATABASE_URL)
+
 if (!connectionString) {
   throw new Error(
     'DATABASE_URL is not set — copy .dev.vars.example to .dev.vars.'

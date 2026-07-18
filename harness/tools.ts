@@ -17,18 +17,6 @@ export const tools = {
     inputSchema: z.object({
       query: z.string().describe('what to look up'),
     }),
-    execute: async ({ query }) => {
-      const hits = Object.entries(KNOWLEDGE_BASE)
-        .filter(([key]) =>
-          query.toLocaleLowerCase().includes(key.toLocaleLowerCase())
-        )
-        .map(([, article]) => article);
-      return {
-        articles: hits.length
-          ? hits
-          : ['Not exact match - user your best judgement'],
-      };
-    },
   }),
   classifyItem: tool({
     description: 'Classify a work item into a category.',
@@ -36,7 +24,6 @@ export const tools = {
       itemId: z.string(),
       category: z.enum(['billing', 'technical', 'sales', 'other']),
     }),
-    execute: async ({ itemId, category }) => ({ ok: true, itemId, category }),
   }),
 
   draftReply: tool({
@@ -45,7 +32,6 @@ export const tools = {
       itemId: z.string(),
       message: z.string(),
     }),
-    execute: async ({ itemId }) => ({ ok: true, draftId: `draft-${itemId}` }),
   }),
 
   sendReply: tool({
@@ -55,7 +41,26 @@ export const tools = {
       itemId: z.string(),
       draftId: z.string(),
     }),
-    // DANGEROUS: an irreversible side effect with zero confirmation.
-    execute: async ({ itemId, draftId }) => ({ sent: true, itemId, draftId }),
   }),
 };
+
+export async function runTool(name: string, args: Record<string, unknown>) {
+  switch (name) {
+    case 'searcKnowledgeBase':
+      const query = String(args.query ?? '').toLowerCase();
+      const hits = Object.entries(KNOWLEDGE_BASE)
+        .filter(([key]) => query.includes(key))
+        .map(([, article]) => article);
+      return {
+        articles: hits.length ? hits : ['No exact match — use your judgment.'],
+      };
+    case 'classifyItem':
+      return { ok: true, itemId: args.itemId, category: args.category };
+    case 'draftReply':
+      return { ok: true, draftId: `draft-${args.itemId}` };
+    case 'sendReply':
+      return { sent: true, itemId: args.itemId, draftId: args.draftId };
+    default:
+      throw new Error(`unknown tool: ${name}`);
+  }
+}

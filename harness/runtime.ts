@@ -8,7 +8,7 @@ import { DBOS } from '@dbos-inc/dbos-sdk';
 import type { ModelMessage, JSONValue } from 'ai';
 import { emit } from './bus';
 
-const MAX_STEPS = 10;
+const MAX_STEPS = 20;
 
 type ToolCall = {
   toolCallId: string;

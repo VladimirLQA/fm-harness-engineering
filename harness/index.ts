@@ -5,3 +5,4 @@ export * from './runtime';
 export * from './tools';
 export * from './system-prompt';
 export * from './sandbox';
+export * from './memory';

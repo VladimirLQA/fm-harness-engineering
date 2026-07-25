@@ -3,10 +3,16 @@ import { randomUUID } from 'node:crypto';
 import { EventType } from '@shared/events';
 import { model } from './model';
 import { tools, runTool } from './tools';
-import { SYSTEM_PROMPT } from './system-prompt';
 import { DBOS } from '@dbos-inc/dbos-sdk';
 import type { ModelMessage, JSONValue } from 'ai';
 import { emit } from './bus';
+import {
+  summarize,
+  estimateTokens,
+  buildContext,
+  MAX_CONTEXT_TOKENS,
+  KEEP_CONTEXT_TOKENS,
+} from './memory';
 
 const MAX_STEPS = 20;
 
@@ -77,21 +83,57 @@ async function agentWorkflow(opts: { input: string }): Promise<string> {
   const { input } = opts;
   const workflowId = randomUUID();
 
-  emit({ type: EventType.WorkflowStarted, workflowId, input });
+  await DBOS.runStep(
+    () => emit({ type: EventType.WorkflowStarted, workflowId, input }),
+    { name: 'started' }
+  );
 
-  const messages: ModelMessage[] = [
-    { role: 'system', content: SYSTEM_PROMPT },
-    { role: 'user', content: input },
-  ];
+  let turns: ModelMessage[][] = [];
+  let summary: string = '';
 
   let step = 0;
   while (step < MAX_STEPS) {
-    const turn = await DBOS.runStep(() => modelStep(workflowId, messages), {
+    // 1. Compact: while the recent window is over budget, peel the oldest turns
+    //    into the running summary (keeping at least the last turn verbatim).
+    if (estimateTokens(turns.flat()) > MAX_CONTEXT_TOKENS) {
+      const old: ModelMessage[][] = [];
+      while (
+        turns.length > 1 &&
+        estimateTokens(turns.flat()) > KEEP_CONTEXT_TOKENS
+      ) {
+        const oldest = turns.shift();
+        if (oldest) old.push(oldest);
+      }
+
+      if (old.length > 0) {
+        summary = await DBOS.runStep(() => summarize(old, summary), {
+          name: `summarize-${step}`,
+        });
+
+        const contextTokens = estimateTokens(
+          buildContext(input, summary, turns)
+        );
+        await DBOS.runStep(
+          () =>
+            emit({
+              type: EventType.MemoryCompacted,
+              workflowId,
+              summarizedTurns: old.length,
+              contextTokens,
+              summary,
+            }),
+          { name: `compacted-${step}` }
+        );
+      }
+    }
+
+    // 2 + 3. Hydrate the context and run one turn over it.
+    const context = buildContext(input, summary, turns);
+    const turn = await DBOS.runStep(() => modelStep(workflowId, context), {
       name: `model-#${step}`,
     });
 
-    // Append model's results message(s) - including any tool result - to history.
-    messages.push(...turn.responseMessages);
+    const turnMessages: ModelMessage[] = [...turn.responseMessages];
 
     if (turn.toolCalls.length === 0) {
       await DBOS.runStep(
@@ -119,7 +161,7 @@ async function agentWorkflow(opts: { input: string }): Promise<string> {
         }
       );
 
-      messages.push({
+      turnMessages.push({
         role: 'tool',
         content: [
           {
@@ -132,6 +174,7 @@ async function agentWorkflow(opts: { input: string }): Promise<string> {
       });
     }
 
+    turns.push(turnMessages);
     step++;
   }
 

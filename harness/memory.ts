@@ -2,15 +2,14 @@ import { generateText } from 'ai';
 import type { ModelMessage } from 'ai';
 import { model } from './model';
 import { SYSTEM_PROMPT } from './system-prompt';
-import type { Mode } from 'drizzle-orm/mysql-core';
 
 // Compact once the recent-turns window grows past MAX_CONTEXT_TOKENS, peeling
 // the oldest turns into the summary until it's back under KEEP_CONTEXT_TOKENS.
 // Token budget — not turn count — is what actually drives context bloat, and it
 // holds up even when the model batches many tool calls into one turn.
 // (Rough estimate: ~4 chars per token. Kept low so compaction kicks in on a short task.)
-export const MAX_CONTEXT_TOKENS = 500;
-export const KEEP_CONTEXT_TOKENS = 200;
+export const MAX_CONTEXT_TOKENS = 5000;
+export const KEEP_CONTEXT_TOKENS = 3000;
 
 export function estimateTokens(messages: ModelMessage[]): number {
   // NOTE: depends on model encoder. The best way is to use the same tokenizer

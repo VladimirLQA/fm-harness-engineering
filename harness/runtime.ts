@@ -73,21 +73,6 @@ async function toolStep(
   return output;
 }
 
-// This is the seam the whole course lives in.
-//
-// Right now it is a STUB: it announces a workflow, logs that nothing is wired
-// up yet, and finishes. The starter app runs end-to-end (browser → socket →
-// server → bus → browser) with this hole in the middle.
-//
-// In LESSON 1 you replace the body with the brittle agent loop:
-//   - call the model (streamText) with the task as the prompt
-//   - stream tokens out as `model.delta` events
-//   - when the model asks for a tool, run it and emit `tool.requested` /
-//     `tool.completed`, then feed the result back to the model
-//   - repeat until the model stops asking for tools
-//
-// Then you spend the rest of the day discovering everything this naive loop
-// gets wrong in production, and building the harness that fixes it.
 async function agentWorkflow(opts: { input: string }): Promise<string> {
   const { input } = opts;
   const workflowId = randomUUID();

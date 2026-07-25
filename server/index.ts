@@ -31,6 +31,8 @@ async function main() {
   });
 
   wss.on('connection', async (socket: WebSocket) => {
+    for (const event of await history()) socket.send(JSON.stringify(event));
+
     socket.on('message', async (raw) => {
       let message: ClientMessage;
       try {
@@ -44,8 +46,6 @@ async function main() {
           input: message.input,
         });
       }
-
-      for (const event of await history()) socket.send(JSON.stringify(event));
     });
   });
 

@@ -1,5 +1,32 @@
 import { tool } from 'ai';
 import { z } from 'zod';
+import { runInSandbox, type SandboxApi } from './sandbox';
+
+type Charge = { id: string; amount: number; date: string; description: string };
+
+// Note the planted duplicate: ch_001 and ch_002 are the same charge.
+const CHARGES: Record<string, Charge[]> = {
+  cus_88121: [
+    {
+      id: 'ch_001',
+      amount: 4900,
+      date: '2026-05-01',
+      description: 'Pro plan — monthly',
+    },
+    {
+      id: 'ch_002',
+      amount: 4900,
+      date: '2026-05-01',
+      description: 'Pro plan — monthly',
+    },
+    {
+      id: 'ch_003',
+      amount: 1500,
+      date: '2026-04-18',
+      description: 'Extra seats',
+    },
+  ],
+};
 
 export const KNOWLEDGE_BASE: Record<string, string> = {
   billing:
@@ -11,7 +38,34 @@ export const KNOWLEDGE_BASE: Record<string, string> = {
     'Team plans are $20/seat/mo with a volume discount at 25+ seats. For 50+ seats, send the pricing PDF.',
 };
 
+function searchKB(q: string) {
+  const query = String(q ?? '').toLowerCase();
+  const hits = Object.entries(KNOWLEDGE_BASE)
+    .filter(([key]) => query.includes(key))
+    .map(([, article]) => article);
+
+  return hits.length ? hits : ['No exact match — use your judgment.'];
+}
+
+const sandboxApi: SandboxApi = {
+  getCharges: async (customerId: string) => CHARGES[customerId] ?? [],
+  searchKnowledgeBase: async (query: string) => searchKB(query),
+};
+
 export const tools = {
+  // Code Mode: instead of chaining a dozen tool calls (each round-tripping
+  // through the model), the agent writes ONE program that fetches and analyzes.
+  runCode: tool({
+    description: [
+      'Run a JavaScript program (an async function body) to fetch and analyze data.',
+      'Available inside the program:',
+      '  • await tools.getCharges(customerId) → [{ id, amount (cents), date, description }]',
+      '  • await tools.searchKnowledgeBase(query) → string[]',
+      '  • console.log(...) for debugging',
+      'Use `return` to return your result (any JSON value).',
+    ].join('\n'),
+    inputSchema: z.object({ code: z.string() }),
+  }),
   searcKnowledgeBase: tool({
     description: 'Search the support knowledge base for relevant articles',
     inputSchema: z.object({
@@ -46,14 +100,12 @@ export const tools = {
 
 export async function runTool(name: string, args: Record<string, unknown>) {
   switch (name) {
-    case 'searcKnowledgeBase':
-      const query = String(args.query ?? '').toLowerCase();
-      const hits = Object.entries(KNOWLEDGE_BASE)
-        .filter(([key]) => query.includes(key))
-        .map(([, article]) => article);
-      return {
-        articles: hits.length ? hits : ['No exact match — use your judgment.'],
-      };
+    case 'runCode':
+      return runInSandbox(String(args.code), sandboxApi);
+    case 'getCharges':
+      return { charges: CHARGES[String(args.customerId)] ?? [] };
+    case 'searchKnowledgeBase':
+      return { articles: searchKB(String(args.query)) };
     case 'classifyItem':
       return { ok: true, itemId: args.itemId, category: args.category };
     case 'draftReply':

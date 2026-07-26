@@ -1,6 +1,12 @@
 import './env.ts';
 import { DBOS } from '@dbos-inc/dbos-sdk';
-import { ensureSchema, subscribe, history, runAgentWorkflow } from 'harness';
+import {
+  clearEventLog,
+  ensureSchema,
+  subscribe,
+  history,
+  runAgentWorkflow,
+} from 'harness';
 import express from 'express';
 import { createServer } from 'node:http';
 import { WebSocketServer, type WebSocket } from 'ws';
@@ -20,6 +26,17 @@ async function main() {
   app.get('/health', (_req, res) => {
     res.json({ ok: true });
   });
+
+  app.use((_req, res, next) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    next();
+  });
+
+  app.post('/api/clear', async (_req, res) => {
+    await clearEventLog();
+    res.json({ ok: true });
+  });
+
   const server = createServer(app);
   const wss = new WebSocketServer({ server, path: '/ws' });
 

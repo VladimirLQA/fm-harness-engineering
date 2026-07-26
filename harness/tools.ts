@@ -66,7 +66,7 @@ export const tools = {
     ].join('\n'),
     inputSchema: z.object({ code: z.string() }),
   }),
-  searcKnowledgeBase: tool({
+  searchKnowledgeBase: tool({
     description: 'Search the support knowledge base for relevant articles',
     inputSchema: z.object({
       query: z.string().describe('what to look up'),

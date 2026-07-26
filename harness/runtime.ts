@@ -2,9 +2,10 @@ import { streamText } from 'ai';
 import { randomUUID } from 'node:crypto';
 import { EventType } from '@shared/events';
 import { model } from './model';
-import { tools, runTool } from './tools';
+import { runTool } from './tools';
 import { DBOS } from '@dbos-inc/dbos-sdk';
-import type { ModelMessage, JSONValue } from 'ai';
+import type { ModelMessage, JSONValue, ToolSet } from 'ai';
+import { triageAgent, billingAgent, agents } from './agents';
 import { emit } from './bus';
 import {
   summarize,
@@ -13,6 +14,8 @@ import {
   MAX_CONTEXT_TOKENS,
   KEEP_CONTEXT_TOKENS,
 } from './memory';
+import { json } from 'node:stream/consumers';
+import type { Agent } from 'node:https';
 
 const MAX_STEPS = 20;
 
@@ -30,11 +33,12 @@ type Turn = {
 
 async function modelStep(
   workflowId: string,
-  messages: ModelMessage[]
+  messages: ModelMessage[],
+  agentTools: ToolSet
 ): Promise<Turn> {
   const result = streamText({
     model,
-    tools,
+    tools: agentTools,
     messages,
   });
 
@@ -79,6 +83,23 @@ async function toolStep(
   return output;
 }
 
+export function toolResultMessage(
+  call: ToolCall,
+  value: JSONValue
+): ModelMessage {
+  return {
+    role: 'tool',
+    content: [
+      {
+        type: 'tool-result',
+        toolCallId: call.toolCallId,
+        toolName: call.toolName,
+        output: { type: 'json', value },
+      },
+    ],
+  };
+}
+
 async function agentWorkflow(opts: { input: string }): Promise<string> {
   const { input } = opts;
   const workflowId = randomUUID();
@@ -87,6 +108,8 @@ async function agentWorkflow(opts: { input: string }): Promise<string> {
     () => emit({ type: EventType.WorkflowStarted, workflowId, input }),
     { name: 'started' }
   );
+
+  let currentAgent = triageAgent;
 
   let turns: ModelMessage[][] = [];
   let summary: string = '';
@@ -111,7 +134,7 @@ async function agentWorkflow(opts: { input: string }): Promise<string> {
         });
 
         const contextTokens = estimateTokens(
-          buildContext(input, summary, turns)
+          buildContext(currentAgent.systemPrompt, input, summary, turns)
         );
         await DBOS.runStep(
           () =>
@@ -128,10 +151,18 @@ async function agentWorkflow(opts: { input: string }): Promise<string> {
     }
 
     // 2 + 3. Hydrate the context and run one turn over it.
-    const context = buildContext(input, summary, turns);
-    const turn = await DBOS.runStep(() => modelStep(workflowId, context), {
-      name: `model-#${step}`,
-    });
+    const context = buildContext(
+      currentAgent.systemPrompt,
+      input,
+      summary,
+      turns
+    );
+    const turn = await DBOS.runStep(
+      () => modelStep(workflowId, context, currentAgent.tools),
+      {
+        name: `model-#${step}`,
+      }
+    );
 
     const turnMessages: ModelMessage[] = [...turn.responseMessages];
 
@@ -154,24 +185,46 @@ async function agentWorkflow(opts: { input: string }): Promise<string> {
     }
 
     for (const call of turn.toolCalls) {
-      const toolCallOutput = await DBOS.runStep(
-        () => toolStep(workflowId, call),
-        {
-          name: `tool-${call.toolCallId}`,
-        }
-      );
+      if (call.toolName === 'handoff') {
+        const to = String(call.input.to ?? '');
+        const reason = String(call.input.reason ?? '');
+        const from = currentAgent.name;
 
-      turnMessages.push({
-        role: 'tool',
-        content: [
+        await DBOS.runStep(
+          () =>
+            emit({
+              type: EventType.AgentHandoff,
+              workflowId,
+              from,
+              to,
+              reason,
+            }),
+          { name: `handoff-${step}` }
+        );
+        currentAgent = agents[to] ?? currentAgent;
+        turnMessages.push(
+          toolResultMessage(call, { ok: true, handedOffTo: to })
+        );
+      } else {
+        const toolCallOutput = await DBOS.runStep(
+          () => toolStep(workflowId, call),
           {
-            type: 'tool-result',
-            toolCallId: call.toolCallId,
-            output: { type: 'json', value: toolCallOutput as JSONValue },
-            toolName: call.toolName,
-          },
-        ],
-      });
+            name: `tool-${call.toolCallId}`,
+          }
+        );
+
+        turnMessages.push({
+          role: 'tool',
+          content: [
+            {
+              type: 'tool-result',
+              toolCallId: call.toolCallId,
+              output: { type: 'json', value: toolCallOutput as JSONValue },
+              toolName: call.toolName,
+            },
+          ],
+        });
+      }
     }
 
     turns.push(turnMessages);

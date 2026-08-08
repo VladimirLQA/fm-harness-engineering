@@ -5,7 +5,7 @@ import { model } from './model';
 import { runTool } from './tools';
 import { DBOS } from '@dbos-inc/dbos-sdk';
 import type { ModelMessage, JSONValue, ToolSet } from 'ai';
-import { triageAgent, billingAgent, agents } from './agents';
+import { triageAgent, agents } from './agents';
 import { emit } from './bus';
 import {
   summarize,
@@ -14,8 +14,6 @@ import {
   MAX_CONTEXT_TOKENS,
   KEEP_CONTEXT_TOKENS,
 } from './memory';
-import { json } from 'node:stream/consumers';
-import type { Agent } from 'node:https';
 
 const MAX_STEPS = 20;
 
@@ -100,8 +98,7 @@ export function toolResultMessage(
   };
 }
 
-async function agentWorkflow(opts: { input: string }): Promise<string> {
-  const { input } = opts;
+async function agentWorkflow(input: string): Promise<string> {
   const workflowId = randomUUID();
 
   await DBOS.runStep(

@@ -6,6 +6,7 @@ import {
   subscribe,
   history,
   runAgentWorkflow,
+  runSupervisorWorkflow,
 } from 'harness';
 import express from 'express';
 import { createServer } from 'node:http';
@@ -59,9 +60,11 @@ async function main() {
       }
 
       if (message.type === 'submit_task') {
-        await DBOS.startWorkflow(runAgentWorkflow)({
-          input: message.input,
-        });
+        const workflow =
+          message.mode === 'supervised'
+            ? runSupervisorWorkflow
+            : runAgentWorkflow;
+        await DBOS.startWorkflow(workflow)(message.input);
       }
     });
   });

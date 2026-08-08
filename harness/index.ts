@@ -7,3 +7,5 @@ export * from './system-prompt';
 export * from './sandbox';
 export * from './memory';
 export * from './agents';
+export * from './investigators';
+export * from './supervisor';
